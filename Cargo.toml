@@ -1,0 +1,16 @@
+[package]
+name = "bsdiff-rs"
+version = "0.1.0"
+authors = ["robot_rover <sam.obrien00@gmail.com>"]
+edition = "2018"
+build = "build.rs"
+
+[dependencies]
+libc = "0.2.0"
+crc32fast = "1.2.0"
+
+[build-dependencies]
+cc = "1.0.40"
+
+[dev-dependencies]
+rand = "0.7.0"
