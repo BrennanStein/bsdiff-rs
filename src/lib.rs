@@ -12,6 +12,10 @@ use crate::bsdiff_c::{BsdiffStream, BspatchStream};
 use std::io::{Read, Write};
 use std::os::raw::c_void;
 
+pub mod bsdiff_40;
+pub mod bsdiff_43;
+pub mod rust;
+
 mod bsdiff_c {
     use std::os::raw::c_void;
 
@@ -80,9 +84,10 @@ pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> 
         )
     };
 
-    match exit_code {
-        0 => Ok(()),
-        code => Err(code),
+    if exit_code == 0 {
+        Ok(())
+    } else {
+        Err(exit_code)
     }
 }
 
@@ -93,7 +98,7 @@ unsafe extern "C" fn bsdiff_write(
 ) -> i32 {
     let output: &mut Write = *((*stream).opaque as *mut &mut Write);
     let buffer: &[u8] = std::slice::from_raw_parts(buffer as *const u8, size as usize);
-    match output.write(buffer) {
+    match output.write_all(buffer) {
         Ok(_) => 0,
         Err(err) => {
             eprintln!("{:?}", err);
@@ -125,9 +130,10 @@ pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut Read) -> Result<(), i
         )
     };
 
-    match exit_code {
-        0 => Ok(()),
-        code => Err(code),
+    if exit_code == 0 {
+        Ok(())
+    } else {
+        Err(exit_code)
     }
 }
 
@@ -138,7 +144,7 @@ unsafe extern "C" fn bspatch_read(
 ) -> i32 {
     let input: &mut Read = *((*stream).opaque as *mut &mut Read);
     let buffer: &mut [u8] = std::slice::from_raw_parts_mut(buffer as *mut u8, length as usize);
-    match input.read(buffer) {
+    match input.read_exact(buffer) {
         Ok(_) => 0,
         Err(err) => {
             eprintln!("{:?}", err);
