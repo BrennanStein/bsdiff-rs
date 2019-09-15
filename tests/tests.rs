@@ -2,6 +2,7 @@ use bsdiff_rs::{bsdiff_43, bspatch_raw};
 use bsdiff_rs;
 use rand::Rng;
 use std::io::{Cursor, Read, Write};
+use bsdiff_rs::bsdiff_43::bsdiff;
 
 struct WriteTest {}
 
@@ -17,13 +18,25 @@ impl Write for WriteTest {
     }
 }
 
+const BSDIFF43_PATCH_1: &[u8] = include_bytes!("bsdiff43_patch_1");
+const BSDIFF43_PATCH_2: &[u8] = include_bytes!("bsdiff43_patch_2");
+
 #[test]
 fn rust_rewrite_test() {
-    let mut patch = Vec::new();
-    bsdiff_rs::rust::bsdiff::bsdiff_raw(DUMMY_OLD_1, DUMMY_NEW_1, &mut patch);
+    let mut patch = Vec::<u8>::new();
+    bsdiff_rs::rust::bsdiff::bsdiff(DUMMY_OLD_1, DUMMY_NEW_1, &mut patch);
+    assert_eq!(&patch[..], BSDIFF43_PATCH_1);
 
-    let mut output = Vec::new();
-    bspatch_raw(DUMMY_OLD_1, &mut output, &mut &patch[..]);
+    let mut output = Vec::<u8>::new();
+    bsdiff_rs::rust::bspatch::bspatch(DUMMY_OLD_1, &mut output, &mut &patch[..]).unwrap();
+
+    let mut patch2 = Vec::<u8>::new();
+    bsdiff_rs::rust::bsdiff::bsdiff(DUMMY_OLD_2, DUMMY_NEW_2, &mut patch2);
+    assert_eq!(&patch2[..], BSDIFF43_PATCH_2);
+
+    let mut output2 = Vec::<u8>::new();
+    bsdiff_rs::rust::bspatch::bspatch(DUMMY_OLD_2, &mut output2, &mut &patch2[..]).unwrap();
+    assert_eq!(output2, DUMMY_NEW_2);
 }
 
 #[test]

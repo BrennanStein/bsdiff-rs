@@ -1,13 +1,28 @@
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::cmp::{min, Ordering};
 use std::io::Write;
+use bzip2::write::BzEncoder;
+use bzip2::Compression;
+use std::fs::File;
 
-fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
+fn check_mem(write: &mut dyn Write, data: &[i64], level: u32) {
+    writeln!(write, "-- Level: {} --", level);
+    for i in 0..data.len() {
+        writeln!(write, "{}: {}", i, data[i]);
+    }
+}
+
+fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64, write: &mut Option<&mut dyn Write>, level: u32) {
+    if let Some(fp) = write {
+        check_mem(fp, I, level);
+    }
     if len < 16 {
-        for k in start..(start + len) {
+        let mut k = start;
+        while k < start + len {
             let mut j = 1;
             let mut x = V[(I[k as usize] + h) as usize];
-            for i in 1..(start + len - k) {
+            let mut i = 1;
+            while k + i < start + len {
                 let value = &V[(I[(k + i) as usize] + h) as usize];
                 if *value < x {
                     x = *value;
@@ -17,6 +32,7 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
                     I.swap((k + j) as usize, (k + i) as usize);
                     j += 1;
                 }
+                i += 1;
             }
 
             for i in 0..j {
@@ -25,6 +41,7 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
                     I[k as usize] = -1;
                 }
             }
+            k += j;
         }
         return;
     }
@@ -60,7 +77,7 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
     }
 
     while jj + j < kk {
-        if V[(I[(jj + j) as usize] + j) as usize] == x {
+        if V[(I[(jj + j) as usize] + h) as usize] == x {
             j += 1;
         } else {
             I.swap((jj + j) as usize, (kk + k) as usize);
@@ -69,7 +86,7 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
     }
 
     if jj > start {
-        split(I, V, start, jj - start, h)
+        split(I, V, start, jj - start, h, write, level + 1)
     }
     for i in 0..(kk - jj) {
         V[I[(jj + i) as usize] as usize] = kk - 1
@@ -79,12 +96,13 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
         I[jj as usize] = -1
     }
     if start + len > kk {
-        split(I, V, kk, start + len - kk, h)
+        split(I, V, kk, start + len - kk, h, write, level + 1)
     }
 }
 
 fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
     let buckets: &mut [i64] = &mut [0; 256];
+    let mut fp = File::create("/home/robot_rover/Desktop/test/rust").unwrap();
 
     // each index n is the frequency that the u8 value n occurs in old
     for i in 0..old.len() {
@@ -134,11 +152,14 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
 
     let mut h = 1;
     while I[0] != -(old.len() as i64 + 1) {
-        println!("h: {}, I[0]: {}", h, I[0]);
-        if h > 10 { panic!()}
         let mut len: usize = 0;
         let mut i: usize = 0;
         while i <= old.len() {
+            let mut dbg = false;
+            let line = 234;
+            if i == line {
+                dbg = true;
+            }
             if I[i] < 0 {
                 len += (-I[i]) as usize;
                 i += (-I[i]) as usize;
@@ -147,10 +168,15 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
                     I[i - len] = -(len as i64);
                 }
                 len = V[I[i] as usize] as usize + 1 - i;
-                split(I, V, i as i64, len as i64, h);
+                let mut check_mem = if dbg {
+                    Some(&mut fp as &mut dyn Write)
+                } else {
+                    None
+                };
+                split(I, V, i as i64, len as i64, h, &mut check_mem, 0);
                 i += len;
                 len = 0;
-                panic!();
+//                panic!();
             }
         }
         if len != 0 {
@@ -213,9 +239,14 @@ fn bsdiff_internal(req: bsdiff_request) {
     let I: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
 
     qsufsort(I, V, &req.old);
-
-    println!("I: {:02X?}", I);
-    println!("V: {:02X?}", V);
+    let mut fp2 = File::create("/home/robot_rover/Desktop/test/rust2").unwrap();
+    for &n in &*I {
+        fp2.write_i64::<LittleEndian>(n);
+    }
+    for &n in &*V {
+        fp2.write_i64::<LittleEndian>(n);
+    }
+    fp2.flush();
 
     let buffer: &mut [u8] = &mut *vec![0u8; req.new.len()];
 
@@ -261,7 +292,6 @@ fn bsdiff_internal(req: bsdiff_request) {
                     s += 1
                 }
                 i += 1;
-                println!("{} * 2 - {} > {} * 2 - {}", s, i, Sf, lenf);
                 if s as i64 * 2 - i as i64 > Sf as i64 * 2 - lenf as i64 {
                     Sf = s;
                     lenf = i;
@@ -320,7 +350,6 @@ fn bsdiff_internal(req: bsdiff_request) {
 
             // Write Diff Data
             for i in 0..lenf {
-                println!("{} {}", req.new[lastscan + i], req.old[lastpos + i]);
                 buffer[i] = req.new[lastscan + i].wrapping_sub(req.old[lastpos + i]);
             }
             req.write.write(&buffer[..lenf]).unwrap();
@@ -344,10 +373,21 @@ pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> 
     let req = bsdiff_request {
         old,
         new,
-        write: patch
+        write: patch,
     };
 
     bsdiff_internal(req);
 
     Ok(())
+}
+
+const MAGIC_NUMBER: &str = "ENDSLEY/BSDIFF43";
+
+pub fn bsdiff(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> {
+    patch.write_all(MAGIC_NUMBER.as_bytes()).unwrap();
+    patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
+    let mut compress = BzEncoder::new(patch, Compression::Best);
+    let exit_code = bsdiff_raw(old, new, &mut compress);
+    compress.finish().unwrap();
+    exit_code
 }
