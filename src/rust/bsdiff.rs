@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::cmp::{min, Ordering};
 use std::io::Write;
@@ -5,17 +7,7 @@ use bzip2::write::BzEncoder;
 use bzip2::Compression;
 use std::fs::File;
 
-fn check_mem(write: &mut dyn Write, data: &[i64], level: u32) {
-    writeln!(write, "-- Level: {} --", level);
-    for i in 0..data.len() {
-        writeln!(write, "{}: {}", i, data[i]);
-    }
-}
-
-fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64, write: &mut Option<&mut dyn Write>, level: u32) {
-    if let Some(fp) = write {
-        check_mem(fp, I, level);
-    }
+fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
     if len < 16 {
         let mut k = start;
         while k < start + len {
@@ -86,7 +78,7 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64, write: &mut
     }
 
     if jj > start {
-        split(I, V, start, jj - start, h, write, level + 1)
+        split(I, V, start, jj - start, h)
     }
     for i in 0..(kk - jj) {
         V[I[(jj + i) as usize] as usize] = kk - 1
@@ -96,13 +88,12 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64, write: &mut
         I[jj as usize] = -1
     }
     if start + len > kk {
-        split(I, V, kk, start + len - kk, h, write, level + 1)
+        split(I, V, kk, start + len - kk, h)
     }
 }
 
 fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
     let buckets: &mut [i64] = &mut [0; 256];
-    let mut fp = File::create("/home/robot_rover/Desktop/test/rust").unwrap();
 
     // each index n is the frequency that the u8 value n occurs in old
     for i in 0..old.len() {
@@ -155,11 +146,6 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
         let mut len: usize = 0;
         let mut i: usize = 0;
         while i <= old.len() {
-            let mut dbg = false;
-            let line = 234;
-            if i == line {
-                dbg = true;
-            }
             if I[i] < 0 {
                 len += (-I[i]) as usize;
                 i += (-I[i]) as usize;
@@ -168,15 +154,9 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
                     I[i - len] = -(len as i64);
                 }
                 len = V[I[i] as usize] as usize + 1 - i;
-                let mut check_mem = if dbg {
-                    Some(&mut fp as &mut dyn Write)
-                } else {
-                    None
-                };
-                split(I, V, i as i64, len as i64, h, &mut check_mem, 0);
+                split(I, V, i as i64, len as i64, h);
                 i += len;
                 len = 0;
-//                panic!();
             }
         }
         if len != 0 {
@@ -228,25 +208,25 @@ fn search(I: &[i64], old: &[u8], new: &[u8], start: usize, end: usize, pos: &mut
     }
 }
 
-struct bsdiff_request<'a> {
+struct BsdiffRequest<'a, W: Write> {
     old: &'a [u8],
     new: &'a [u8],
-    write: &'a mut Write,
+    write: &'a mut W,
 }
 
-fn bsdiff_internal(req: bsdiff_request) {
+fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) {
     let V: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
     let I: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
 
     qsufsort(I, V, &req.old);
     let mut fp2 = File::create("/home/robot_rover/Desktop/test/rust2").unwrap();
     for &n in &*I {
-        fp2.write_i64::<LittleEndian>(n);
+        fp2.write_i64::<LittleEndian>(n).unwrap();
     }
     for &n in &*V {
-        fp2.write_i64::<LittleEndian>(n);
+        fp2.write_i64::<LittleEndian>(n).unwrap();
     }
-    fp2.flush();
+    fp2.flush().unwrap();
 
     let buffer: &mut [u8] = &mut *vec![0u8; req.new.len()];
 
@@ -358,7 +338,7 @@ fn bsdiff_internal(req: bsdiff_request) {
             for i in 0..((scan - lenb) - (lastscan + lenf)) {
                 buffer[i] = req.new[lastscan + lenf + i];
             }
-            req.write.write(&buffer[..((scan - lenb) - (lastscan + lenf))]);
+            req.write.write(&buffer[..((scan - lenb) - (lastscan + lenf))]).unwrap();
 
             if scan < req.new.len() {
                 lastscan = scan - lenb;
@@ -369,8 +349,8 @@ fn bsdiff_internal(req: bsdiff_request) {
     }
 }
 
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> {
-    let req = bsdiff_request {
+pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(), i32> {
+    let req = BsdiffRequest {
         old,
         new,
         write: patch,
@@ -383,7 +363,7 @@ pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> 
 
 const MAGIC_NUMBER: &str = "ENDSLEY/BSDIFF43";
 
-pub fn bsdiff(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> {
+pub fn bsdiff<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(), i32> {
     patch.write_all(MAGIC_NUMBER.as_bytes()).unwrap();
     patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
     let mut compress = BzEncoder::new(patch, Compression::Best);

@@ -64,9 +64,9 @@ mod bsdiff_c {
 /// Access to the raw bsdiff algorithm.
 /// This function does not add any headers or lenght information to the patch.
 ///
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> {
+pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> Result<(), i32> {
     let mut boxed_ptr = Box::from(patch);
-    let raw_ptr = boxed_ptr.as_mut() as *mut &mut Write;
+    let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Write;
     let mut config = BsdiffStream {
         opaque: raw_ptr as *mut c_void,
         malloc: libc::malloc,
@@ -96,7 +96,7 @@ unsafe extern "C" fn bsdiff_write(
     buffer: *const c_void,
     size: i32,
 ) -> i32 {
-    let output: &mut Write = *((*stream).opaque as *mut &mut Write);
+    let output: &mut dyn Write = *((*stream).opaque as *mut &mut dyn Write);
     let buffer: &[u8] = std::slice::from_raw_parts(buffer as *const u8, size as usize);
     match output.write_all(buffer) {
         Ok(_) => 0,
@@ -112,9 +112,9 @@ unsafe extern "C" fn bsdiff_write(
 /// This function does not read a header or any length information.
 /// The output buffer must be the correct size.
 ///
-pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut Read) -> Result<(), i32> {
+pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut dyn Read) -> Result<(), i32> {
     let mut boxed_ptr = Box::from(patch);
-    let raw_ptr = boxed_ptr.as_mut() as *mut &mut Read;
+    let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Read;
     let mut config = BspatchStream {
         opaque: raw_ptr as *mut c_void,
         read: bspatch_read,
@@ -142,7 +142,7 @@ unsafe extern "C" fn bspatch_read(
     buffer: *mut c_void,
     length: i32,
 ) -> i32 {
-    let input: &mut Read = *((*stream).opaque as *mut &mut Read);
+    let input: &mut dyn Read = *((*stream).opaque as *mut &mut dyn Read);
     let buffer: &mut [u8] = std::slice::from_raw_parts_mut(buffer as *mut u8, length as usize);
     match input.read_exact(buffer) {
         Ok(_) => 0,

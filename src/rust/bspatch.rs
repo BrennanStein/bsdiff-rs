@@ -3,7 +3,6 @@ use byteorder::{ReadBytesExt, LittleEndian};
 use bzip2::read::BzDecoder;
 
 fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> Result<(), i32> {
-    let mut buf = [0u8; 8];
     let mut oldpos: usize = 0;
     let mut newpos: usize = 0;
     let mut ctrl = [0i64; 3];
@@ -20,7 +19,7 @@ fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> Result<(), 
         stream.read_exact(&mut new[newpos..(newpos + ctrl[0] as usize)]).unwrap();
 
         for i in 0..(ctrl[0] as usize) {
-            if oldpos + i >= 0 && oldpos + i < old.len() {
+            if oldpos + i < old.len() {
                 new[newpos + i] += old[oldpos + i];
             }
         }
@@ -43,7 +42,7 @@ fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> Result<(), 
 
 const MAGIC_NUMBER: &str = "ENDSLEY/BSDIFF43";
 
-pub fn bspatch(old: &[u8], new: &mut Write, patch: &mut Read) -> Result<(), i32> {
+pub fn bspatch<R: Read, W: Write>(old: &[u8], new: &mut W, patch: &mut R) -> Result<(), i32> {
     let mut header = [0u8; 16];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header, MAGIC_NUMBER.as_bytes());

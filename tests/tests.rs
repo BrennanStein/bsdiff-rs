@@ -4,20 +4,6 @@ use rand::Rng;
 use std::io::{Cursor, Read, Write};
 use bsdiff_rs::bsdiff_43::bsdiff;
 
-struct WriteTest {}
-
-impl Write for WriteTest {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        println!("{:02X?}", buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> Result<(), std::io::Error> {
-        println!("flushed!");
-        Ok(())
-    }
-}
-
 const BSDIFF43_PATCH_1: &[u8] = include_bytes!("bsdiff43_patch_1");
 const BSDIFF43_PATCH_2: &[u8] = include_bytes!("bsdiff43_patch_2");
 

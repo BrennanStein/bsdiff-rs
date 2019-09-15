@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 
 const MAGIC_NUMBER: &str = "ENDSLEY/BSDIFF43";
 
-pub fn bsdiff(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> {
+pub fn bsdiff<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(), i32> {
     patch.write_all(MAGIC_NUMBER.as_bytes()).unwrap();
     patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
     let mut compress = BzEncoder::new(patch, Compression::Best);
@@ -16,7 +16,7 @@ pub fn bsdiff(old: &[u8], new: &[u8], patch: &mut Write) -> Result<(), i32> {
     exit_code
 }
 
-pub fn bspatch(old: &[u8], new: &mut Write, patch: &mut Read) -> Result<(), i32> {
+pub fn bspatch<W: Write, R: Read>(old: &[u8], new: &mut W, patch: &mut R) -> Result<(), i32> {
     let mut header = [0u8; 16];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header, MAGIC_NUMBER.as_bytes());
