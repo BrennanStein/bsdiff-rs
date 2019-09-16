@@ -3,9 +3,6 @@
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::cmp::{min, Ordering};
 use std::io::Write;
-use bzip2::write::BzEncoder;
-use bzip2::Compression;
-use std::fs::File;
 
 fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
     if len < 16 {
@@ -208,25 +205,17 @@ fn search(I: &[i64], old: &[u8], new: &[u8], start: usize, end: usize, pos: &mut
     }
 }
 
-struct BsdiffRequest<'a, W: Write> {
+struct BsdiffRequest<'a> {
     old: &'a [u8],
     new: &'a [u8],
-    write: &'a mut W,
+    write: &'a mut dyn Write,
 }
 
-fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) {
+fn bsdiff_internal(req: BsdiffRequest) {
     let V: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
     let I: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
 
     qsufsort(I, V, &req.old);
-    let mut fp2 = File::create("/home/robot_rover/Desktop/test/rust2").unwrap();
-    for &n in &*I {
-        fp2.write_i64::<LittleEndian>(n).unwrap();
-    }
-    for &n in &*V {
-        fp2.write_i64::<LittleEndian>(n).unwrap();
-    }
-    fp2.flush().unwrap();
 
     let buffer: &mut [u8] = &mut *vec![0u8; req.new.len()];
 
@@ -349,7 +338,7 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) {
     }
 }
 
-pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(), i32> {
+pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> Result<(), i32> {
     let req = BsdiffRequest {
         old,
         new,
@@ -359,15 +348,4 @@ pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(),
     bsdiff_internal(req);
 
     Ok(())
-}
-
-const MAGIC_NUMBER: &str = "ENDSLEY/BSDIFF43";
-
-pub fn bsdiff<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(), i32> {
-    patch.write_all(MAGIC_NUMBER.as_bytes()).unwrap();
-    patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
-    let mut compress = BzEncoder::new(patch, Compression::Best);
-    let exit_code = bsdiff_raw(old, new, &mut compress);
-    compress.finish().unwrap();
-    exit_code
 }

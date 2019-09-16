@@ -5,6 +5,9 @@ authors = ["robot_rover <sam.obrien00@gmail.com>"]
 edition = "2018"
 build = "build.rs"
 
+[features]
+rust_backend = []
+
 [dependencies]
 libc = "0.2.0"
 byteorder = "1.3.2"

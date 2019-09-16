@@ -8,150 +8,49 @@
 
 extern crate libc;
 
-use crate::bsdiff_c::{BsdiffStream, BspatchStream};
 use std::io::{Read, Write};
-use std::os::raw::c_void;
+use byteorder::{WriteBytesExt, LittleEndian, ReadBytesExt};
+use bzip2::Compression;
+use bzip2::write::BzEncoder;
+use bzip2::read::BzDecoder;
 
-pub mod bsdiff_40;
-pub mod bsdiff_43;
-pub mod rust;
-
-mod bsdiff_c {
-    use std::os::raw::c_void;
-
-    #[repr(C)]
-    pub struct BsdiffStream {
-        pub opaque: *mut c_void,
-        pub malloc: unsafe extern "C" fn(size: usize) -> *mut c_void,
-        pub free: unsafe extern "C" fn(ptr: *mut c_void),
-        pub write: unsafe extern "C" fn(
-            stream: *mut BsdiffStream,
-            buffer: *const c_void,
-            size: i32,
-        ) -> i32,
-    }
-
-    #[repr(C)]
-    pub struct BspatchStream {
-        pub opaque: *mut c_void,
-        pub read: unsafe extern "C" fn(
-            stream: *const BspatchStream,
-            buffer: *mut c_void,
-            length: i32,
-        ) -> i32,
-    }
-
-    #[link(name = "bsdiff")]
-    extern "C" {
-        pub fn bsdiff(
-            old: *const u8,
-            oldsize: i64,
-            new: *const u8,
-            newsize: i64,
-            stream: *mut BsdiffStream,
-        ) -> i32;
-        pub fn bspatch(
-            old: *const u8,
-            oldsize: i64,
-            new: *mut u8,
-            newsize: i64,
-            stream: *mut BspatchStream,
-        ) -> i32;
-    }
-}
-
-///
-/// Access to the raw bsdiff algorithm.
-/// This function does not add any headers or lenght information to the patch.
-///
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> Result<(), i32> {
-    let mut boxed_ptr = Box::from(patch);
-    let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Write;
-    let mut config = BsdiffStream {
-        opaque: raw_ptr as *mut c_void,
-        malloc: libc::malloc,
-        free: libc::free,
-        write: bsdiff_write,
-    };
-
-    let exit_code = unsafe {
-        bsdiff_c::bsdiff(
-            old.as_ptr(),
-            old.len() as i64,
-            new.as_ptr(),
-            new.len() as i64,
-            &mut config as *mut BsdiffStream,
-        )
-    };
-
-    if exit_code == 0 {
-        Ok(())
-    } else {
-        Err(exit_code)
-    }
-}
-
-unsafe extern "C" fn bsdiff_write(
-    stream: *mut bsdiff_c::BsdiffStream,
-    buffer: *const c_void,
-    size: i32,
-) -> i32 {
-    let output: &mut dyn Write = *((*stream).opaque as *mut &mut dyn Write);
-    let buffer: &[u8] = std::slice::from_raw_parts(buffer as *const u8, size as usize);
-    match output.write_all(buffer) {
-        Ok(_) => 0,
-        Err(err) => {
-            eprintln!("{:?}", err);
-            -1
-        }
-    }
-}
-
-///
-/// Access to the raw bspatch algorithm.
-/// This function does not read a header or any length information.
-/// The output buffer must be the correct size.
-///
-pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut dyn Read) -> Result<(), i32> {
-    let mut boxed_ptr = Box::from(patch);
-    let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Read;
-    let mut config = BspatchStream {
-        opaque: raw_ptr as *mut c_void,
-        read: bspatch_read,
-    };
-
-    let exit_code = unsafe {
-        bsdiff_c::bspatch(
-            old.as_ptr(),
-            old.len() as i64,
-            new.as_mut_ptr(),
-            new.len() as i64,
-            &mut config as *mut BspatchStream,
-        )
-    };
-
-    if exit_code == 0 {
-        Ok(())
-    } else {
-        Err(exit_code)
-    }
-}
-
-unsafe extern "C" fn bspatch_read(
-    stream: *const BspatchStream,
-    buffer: *mut c_void,
-    length: i32,
-) -> i32 {
-    let input: &mut dyn Read = *((*stream).opaque as *mut &mut dyn Read);
-    let buffer: &mut [u8] = std::slice::from_raw_parts_mut(buffer as *mut u8, length as usize);
-    match input.read_exact(buffer) {
-        Ok(_) => 0,
-        Err(err) => {
-            eprintln!("{:?}", err);
-            -1
-        }
-    }
-}
+#[cfg_attr(all(features = "rust_backend", not(test)), path = "rust/mod.rs")]
+#[cfg_attr(all(not(features = "rust_backend"), not(test)), path = "c/mod.rs")]
+#[cfg_attr(test, path = "test_backend.rs")]
+#[macro_use]
+pub mod raw;
 
 #[cfg(test)]
-mod tests {}
+pub mod rust;
+
+#[cfg(test)]
+pub mod c;
+
+const MAGIC_NUMBER_BSDIFF_43: &str = "ENDSLEY/BSDIFF43";
+
+pub fn bsdiff_43<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> Result<(), i32> {
+    patch.write_all(MAGIC_NUMBER_BSDIFF_43.as_bytes()).unwrap();
+    patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
+    let mut compress = BzEncoder::new(patch, Compression::Best);
+    let exit_code = raw::bsdiff_raw(old, new, &mut compress);
+    compress.finish().unwrap();
+    exit_code
+}
+
+pub fn bspatch_43<W: Write, R: Read>(old: &[u8], new: &mut W, patch: &mut R) -> Result<(), i32> {
+    let mut header = [0u8; 16];
+    patch.read_exact(&mut header).unwrap();
+    assert_eq!(&header, MAGIC_NUMBER_BSDIFF_43.as_bytes());
+    let new_size = patch.read_u64::<LittleEndian>().unwrap();
+    let mut new_buffer = vec![0u8; new_size as usize];
+    let mut decompress = BzDecoder::new(patch);
+    let stream_ptr: &mut dyn Read = &mut decompress;
+    let exit_code = raw::bspatch_raw(old, &mut new_buffer[..], stream_ptr);
+    if let Ok(()) = exit_code {
+        new.write_all(&mut new_buffer[..]).unwrap();
+    };
+    exit_code
+}
+
+#[allow(dead_code)]
+const MAGIC_NUMBER_BSDIFF_40: &str = "BSDIFF40";
