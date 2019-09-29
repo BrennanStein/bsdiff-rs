@@ -1,12 +1,13 @@
-use std::io::Write;
-use std::os::raw::c_void;
 use super::c_bindings;
+use crate::BsDiffResult;
+use std::io::{Error, ErrorKind, Write};
+use std::os::raw::c_void;
 
 ///
 /// Access to the raw bsdiff algorithm.
 /// This function does not add any headers or lenght information to the patch.
 ///
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> Result<(), i32> {
+pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
     let mut boxed_ptr = Box::from(patch);
     let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Write;
     let mut config = c_bindings::BsdiffStream {
@@ -29,7 +30,10 @@ pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> Result<(), i
     if exit_code == 0 {
         Ok(())
     } else {
-        Err(exit_code)
+        Err(Error::new(
+            ErrorKind::Other,
+            format!("C code returned {}", exit_code),
+        ))
     }
 }
 

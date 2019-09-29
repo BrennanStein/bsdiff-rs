@@ -1,21 +1,22 @@
-use std::io::Read;
-use byteorder::{ReadBytesExt, LittleEndian};
+use crate::BsDiffResult;
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::io::{Error, ErrorKind, Read};
 
-pub fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> Result<(), i32> {
+pub fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult {
     let mut oldpos: usize = 0;
     let mut newpos: usize = 0;
     let mut ctrl = [0i64; 3];
 
     while newpos < new.len() {
-       for i in 0..3 {
-           ctrl[i] = stream.read_i64::<LittleEndian>().unwrap();
-       }
-
-        if newpos + ctrl[0] as usize > new.len() {
-            return Err(-1);
+        for i in 0..3 {
+            ctrl[i] = stream.read_i64::<LittleEndian>()?;
         }
 
-        stream.read_exact(&mut new[newpos..(newpos + ctrl[0] as usize)]).unwrap();
+        if newpos + ctrl[0] as usize > new.len() {
+            return Err(invalid_data!());
+        }
+
+        stream.read_exact(&mut new[newpos..(newpos + ctrl[0] as usize)])?;
 
         for i in 0..(ctrl[0] as usize) {
             if oldpos + i < old.len() {
@@ -27,10 +28,10 @@ pub fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> Result<
         oldpos += ctrl[0] as usize;
 
         if newpos + ctrl[1] as usize > new.len() {
-            return Err(-1);
+            return Err(invalid_data!());
         }
 
-        stream.read_exact(&mut new[newpos..(newpos + ctrl[1] as usize)]).unwrap();
+        stream.read_exact(&mut new[newpos..(newpos + ctrl[1] as usize)])?;
 
         newpos += ctrl[1] as usize;
         oldpos += ctrl[2] as usize;

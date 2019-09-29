@@ -1,5 +1,5 @@
 use bsdiff_rs;
-use bsdiff_rs::{bspatch_43, bsdiff_43};
+use bsdiff_rs::{bsdiff_43, bspatch_43};
 
 const DUMMY_OLD_1: &[u8] = include_bytes!("dummy_old_1");
 const DUMMY_OLD_2: &[u8] = include_bytes!("dummy_old_2");
@@ -8,7 +8,6 @@ const DUMMY_NEW_2: &[u8] = include_bytes!("dummy_new_2");
 
 const BSDIFF43_PATCH_1: &[u8] = include_bytes!("bsdiff43_patch_1");
 const BSDIFF43_PATCH_2: &[u8] = include_bytes!("bsdiff43_patch_2");
-
 
 #[test]
 fn bsdiff_43_bspatch() {

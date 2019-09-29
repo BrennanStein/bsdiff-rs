@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+use crate::BsDiffResult;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::cmp::{min, Ordering};
 use std::io::Write;
@@ -211,7 +212,7 @@ struct BsdiffRequest<'a> {
     write: &'a mut dyn Write,
 }
 
-fn bsdiff_internal(req: BsdiffRequest) {
+fn bsdiff_internal(req: BsdiffRequest) -> BsDiffResult {
     let V: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
     let I: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
 
@@ -311,23 +312,24 @@ fn bsdiff_internal(req: BsdiffRequest) {
             }
 
             // Write Control Data
-            req.write.write_i64::<LittleEndian>(lenf as i64).unwrap();
+            req.write.write_i64::<LittleEndian>(lenf as i64)?;
             req.write
-                .write_i64::<LittleEndian>((scan - lenb) as i64 - (lastscan + lenf) as i64).unwrap();
+                .write_i64::<LittleEndian>((scan - lenb) as i64 - (lastscan + lenf) as i64)?;
             req.write
-                .write_i64::<LittleEndian>((pos - lenb as i64) - (lastpos + lenf) as i64).unwrap();
+                .write_i64::<LittleEndian>((pos - lenb as i64) - (lastpos + lenf) as i64)?;
 
             // Write Diff Data
             for i in 0..lenf {
                 buffer[i] = req.new[lastscan + i].wrapping_sub(req.old[lastpos + i]);
             }
-            req.write.write(&buffer[..lenf]).unwrap();
+            req.write.write(&buffer[..lenf])?;
 
             // Write Extra Data
             for i in 0..((scan - lenb) - (lastscan + lenf)) {
                 buffer[i] = req.new[lastscan + lenf + i];
             }
-            req.write.write(&buffer[..((scan - lenb) - (lastscan + lenf))]).unwrap();
+            req.write
+                .write(&buffer[..((scan - lenb) - (lastscan + lenf))])?;
 
             if scan < req.new.len() {
                 lastscan = scan - lenb;
@@ -336,16 +338,16 @@ fn bsdiff_internal(req: BsdiffRequest) {
             }
         }
     }
+
+    Ok(())
 }
 
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> Result<(), i32> {
+pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
     let req = BsdiffRequest {
         old,
         new,
         write: patch,
     };
 
-    bsdiff_internal(req);
-
-    Ok(())
+    bsdiff_internal(req)
 }

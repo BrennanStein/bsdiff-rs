@@ -1,13 +1,14 @@
-use std::io::Read;
-use std::os::raw::c_void;
 use super::c_bindings;
+use crate::BsDiffResult;
+use std::io::{Error, ErrorKind, Read};
+use std::os::raw::c_void;
 
 ///
 /// Access to the raw bspatch algorithm.
 /// This function does not read a header or any length information.
 /// The output buffer must be the correct size.
 ///
-pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut dyn Read) -> Result<(), i32> {
+pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut dyn Read) -> BsDiffResult {
     let mut boxed_ptr = Box::from(patch);
     let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Read;
     let mut config = c_bindings::BspatchStream {
@@ -28,7 +29,10 @@ pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut dyn Read) -> Result<(
     if exit_code == 0 {
         Ok(())
     } else {
-        Err(exit_code)
+        Err(Error::new(
+            ErrorKind::Other,
+            format!("C code returned {}", exit_code),
+        ))
     }
 }
 

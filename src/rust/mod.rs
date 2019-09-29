@@ -1,8 +1,8 @@
 mod bsdiff;
 mod bspatch;
 
-pub use bsdiff::bsdiff_raw as bsdiff_raw;
-pub use bspatch::bspatch_raw as bspatch_raw;
+pub use bsdiff::bsdiff_raw;
+pub use bspatch::bspatch_raw;
 
 #[cfg(test)]
 mod tests {
