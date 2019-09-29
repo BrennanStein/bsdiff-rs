@@ -1,6 +1,6 @@
 use crate::BsDiffResult;
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::io::{Error, ErrorKind, Read};
+use std::io::{Read};
 
 pub fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult {
     let mut oldpos: usize = 0;

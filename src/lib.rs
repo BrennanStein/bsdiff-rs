@@ -14,6 +14,7 @@ use bzip2::write::BzEncoder;
 use bzip2::Compression;
 use std::io::{Read, Write};
 
+#[allow(unused_macros)]
 macro_rules! invalid_data {
     () => {
         std::io::Error::new(
