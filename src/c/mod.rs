@@ -1,13 +1,27 @@
+use crate::BsDiffResult;
+use std::io::{Read, Write};
+
 mod bsdiff;
 mod bspatch;
 
-pub use bsdiff::bsdiff_raw;
-pub use bspatch::bspatch_raw;
+use crate::Backend;
+
+pub struct CBackend;
+
+impl Backend for CBackend {
+    fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
+        bsdiff::bsdiff_raw(old, new, patch)
+    }
+
+    fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult {
+        bspatch::bspatch_raw(old, new, stream)
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    backend_tests!(bsdiff_raw, bspatch_raw);
+    use super::CBackend;
+    backend_tests!(CBackend);
 }
 
 mod c_bindings {
