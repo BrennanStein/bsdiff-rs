@@ -35,7 +35,7 @@ pub fn long_random_data_t<B: Backend>() {
     for i in 0..10 {
         let old_data = (&mut rng)
             .sample_iter(rand::distributions::Standard)
-            .take(1000 - i)
+            .take(10000 - i)
             .collect::<Vec<u8>>();
         let new_data = (&mut rng)
             .sample_iter(rand::distributions::Standard)

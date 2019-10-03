@@ -5,7 +5,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use std::cmp::{min, Ordering};
 use std::io::Write;
 
-fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
+fn split(I: &mut [isize], V: &mut [isize], start: isize, len: isize, h: isize) {
     if len < 16 {
         let mut k = start;
         while k < start + len {
@@ -90,8 +90,8 @@ fn split(I: &mut [i64], V: &mut [i64], start: i64, len: i64, h: i64) {
     }
 }
 
-fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
-    let buckets: &mut [i64] = &mut [0; 256];
+fn qsufsort(I: &mut [isize], V: &mut [isize], old: &[u8]) {
+    let buckets: &mut [isize] = &mut [0; 256];
 
     // each index n is the frequency that the u8 value n occurs in old
     for i in 0..old.len() {
@@ -121,9 +121,9 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
     // when n the sorted index, I[n + 1] is the index of old
     for i in 0..old.len() {
         buckets[old[i] as usize] += 1;
-        I[buckets[old[i] as usize] as usize] = i as i64;
+        I[buckets[old[i] as usize] as usize] = i as isize;
     }
-    I[0] = old.len() as i64;
+    I[0] = old.len() as isize;
 
     // V[i] is the inverse of I[i], when i is old's index, V[i] the sorted index
     for i in 0..old.len() {
@@ -140,7 +140,7 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
     I[0] = -1;
 
     let mut h = 1;
-    while I[0] != -(old.len() as i64 + 1) {
+    while I[0] != -(old.len() as isize + 1) {
         let mut len: usize = 0;
         let mut i: usize = 0;
         while i <= old.len() {
@@ -149,23 +149,23 @@ fn qsufsort(I: &mut [i64], V: &mut [i64], old: &[u8]) {
                 i += (-I[i]) as usize;
             } else {
                 if len != 0 {
-                    I[i - len] = -(len as i64);
+                    I[i - len] = -(len as isize);
                 }
                 len = V[I[i] as usize] as usize + 1 - i;
-                split(I, V, i as i64, len as i64, h);
+                split(I, V, i as isize, len as isize, h);
                 i += len;
                 len = 0;
             }
         }
         if len != 0 {
-            I[i - len] = -(len as i64);
+            I[i - len] = -(len as isize);
         }
 
         h += h;
     }
 
     for i in 0..=old.len() {
-        I[V[i] as usize] = i as i64
+        I[V[i] as usize] = i as isize
     }
 }
 
@@ -181,7 +181,7 @@ fn matchlen(old: &[u8], new: &[u8]) -> i64 {
     return i as i64;
 }
 
-fn search(I: &[i64], old: &[u8], new: &[u8], start: usize, end: usize, pos: &mut i64) -> i64 {
+fn search(I: &[isize], old: &[u8], new: &[u8], start: usize, end: usize, pos: &mut isize) -> i64 {
     if end - start < 2 {
         let x = matchlen(&old[(I[start] as usize)..], new);
         let y = matchlen(&old[(I[end] as usize)..], new);
@@ -213,8 +213,8 @@ struct BsdiffRequest<'a> {
 }
 
 fn bsdiff_internal(req: BsdiffRequest) -> BsDiffResult {
-    let V: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
-    let I: &mut [i64] = &mut *vec![0i64; req.old.len() + 1];
+    let V: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
+    let I: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
 
     qsufsort(I, V, &req.old);
 
@@ -316,20 +316,20 @@ fn bsdiff_internal(req: BsdiffRequest) -> BsDiffResult {
             req.write
                 .write_i64::<LittleEndian>((scan - lenb) as i64 - (lastscan + lenf) as i64)?;
             req.write
-                .write_i64::<LittleEndian>((pos - lenb as i64) - (lastpos + lenf) as i64)?;
+                .write_i64::<LittleEndian>((pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64))?;
 
             // Write Diff Data
             for i in 0..lenf {
                 buffer[i] = req.new[lastscan + i].wrapping_sub(req.old[lastpos + i]);
             }
-            req.write.write(&buffer[..lenf])?;
+            req.write.write_all(&buffer[..lenf])?;
 
             // Write Extra Data
             for i in 0..((scan - lenb) - (lastscan + lenf)) {
                 buffer[i] = req.new[lastscan + lenf + i];
             }
             req.write
-                .write(&buffer[..((scan - lenb) - (lastscan + lenf))])?;
+                .write_all(&buffer[..((scan - lenb) - (lastscan + lenf))])?;
 
             if scan < req.new.len() {
                 lastscan = scan - lenb;
