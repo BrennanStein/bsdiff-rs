@@ -1,3 +1,5 @@
+#![cfg_attr(tarpaulin, skip)]
+
 #[macro_use]
 extern crate criterion;
 extern crate bsdiff_rs;

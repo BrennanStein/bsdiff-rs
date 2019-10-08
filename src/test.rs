@@ -3,7 +3,7 @@ use rand::Rng;
 
 macro_rules! backend_tests {
     ($d:ident) => {
-        use crate::test::{hardcoded_data_t, long_random_data_t};
+        use crate::test::{hardcoded_data_t, long_random_data_t, delta_data_t};
         #[test]
         fn hardcoded_data() {
             hardcoded_data_t::<$d>();
@@ -12,6 +12,11 @@ macro_rules! backend_tests {
         #[test]
         fn long_random_data() {
             long_random_data_t::<$d>()
+        }
+
+        #[test]
+        fn delta_data() {
+            delta_data_t::<$d>()
         }
     };
 }
@@ -50,4 +55,27 @@ pub fn long_random_data_t<B: Backend>() {
 
         assert_eq!(&output_data[..], &new_data[..])
     }
+}
+
+pub fn delta_data_t<B: Backend>() {
+    let mut rng = rand_pcg::Mcg128Xsl64::new(0);
+    let old_data = (&mut rng)
+        .sample_iter(rand::distributions::Standard)
+        .take(5000)
+        .collect::<Vec<u8>>();
+    let mut new_data = Vec::with_capacity(5000);
+    new_data.extend_from_slice(&old_data[..2500]);
+    (&mut rng)
+        .sample_iter(rand::distributions::Standard)
+        .take(500)
+        .for_each(|b| new_data.push(b));
+    &old_data[2500..].iter().map(|b| b.overflowing_add(1).0).for_each(|b| new_data.push(b));
+    let mut patch = Vec::<u8>::new();
+    B::bsdiff_raw(&old_data, &new_data, &mut patch).unwrap();
+    println!("{}", patch.len());
+
+    let mut output = vec![0u8; new_data.len()];
+    B::bspatch_raw(&old_data, &mut output, &mut &*patch).unwrap();
+
+    assert_eq!(new_data, output);
 }
