@@ -2,7 +2,7 @@ use crate::BsDiffResult;
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::Read;
 
-pub fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult {
+pub fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], stream: &mut R) -> BsDiffResult {
     let mut oldpos: usize = 0;
     let mut newpos: usize = 0;
     let mut ctrl = [0i64; 3];

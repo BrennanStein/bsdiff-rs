@@ -206,13 +206,13 @@ fn search(I: &[isize], old: &[u8], new: &[u8], start: usize, end: usize, pos: &m
     }
 }
 
-struct BsdiffRequest<'a> {
+struct BsdiffRequest<'a, W: Write> {
     old: &'a [u8],
     new: &'a [u8],
-    write: &'a mut dyn Write,
+    write: &'a mut W,
 }
 
-fn bsdiff_internal(req: BsdiffRequest) -> BsDiffResult {
+fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
     let V: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
     let I: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
 
@@ -342,7 +342,7 @@ fn bsdiff_internal(req: BsdiffRequest) -> BsDiffResult {
     Ok(())
 }
 
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
+pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult {
     let req = BsdiffRequest {
         old,
         new,

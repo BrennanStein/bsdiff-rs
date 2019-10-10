@@ -75,7 +75,7 @@ pub fn delta_data_t<B: Backend>() {
     println!("{}", patch.len());
 
     let mut output = vec![0u8; new_data.len()];
-    B::bspatch_raw(&old_data, &mut output, &mut &*patch).unwrap();
+    B::bspatch_raw(&old_data, &mut output, &mut &patch[..]).unwrap();
 
     assert_eq!(new_data, output);
 }

@@ -16,11 +16,11 @@ use std::io::{Read, Write};
 pub struct RustBackend;
 
 impl Backend for RustBackend {
-    fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
+    fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult {
         bsdiff::bsdiff_raw(old, new, patch)
     }
 
-    fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult {
+    fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], stream: &mut R) -> BsDiffResult {
         bspatch::bspatch_raw(old, new, stream)
     }
 }

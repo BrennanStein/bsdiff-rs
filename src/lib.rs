@@ -50,8 +50,7 @@ impl<B: Backend> BsDiff<B> {
         let new_size = patch.read_u64::<LittleEndian>().unwrap();
         let mut new_buffer = vec![0u8; new_size as usize];
         let mut decompress = BzDecoder::new(patch);
-        let stream_ptr: &mut dyn Read = &mut decompress;
-        let exit_code = B::bspatch_raw(old, &mut new_buffer[..], stream_ptr);
+        let exit_code = B::bspatch_raw(old, &mut new_buffer[..], &mut decompress);
         if let Ok(()) = exit_code {
             new.write_all(&mut new_buffer[..]).unwrap();
         };
@@ -61,19 +60,19 @@ impl<B: Backend> BsDiff<B> {
 
 impl<B: Backend> Backend for BsDiff<B> {
     #[inline]
-    fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
+    fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult {
         B::bsdiff_raw(old, new, patch)
     }
 
     #[inline]
-    fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult {
+    fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], stream: &mut R) -> BsDiffResult {
         B::bspatch_raw(old, new, stream)
     }
 }
 
 pub trait Backend {
-    fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult;
-    fn bspatch_raw(old: &[u8], new: &mut [u8], stream: &mut dyn Read) -> BsDiffResult;
+    fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult;
+    fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], stream: &mut R) -> BsDiffResult;
 }
 
 #[allow(dead_code)]
