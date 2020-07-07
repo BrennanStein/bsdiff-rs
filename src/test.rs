@@ -72,7 +72,6 @@ pub fn delta_data_t<B: Backend>() {
     &old_data[2500..].iter().map(|b| b.overflowing_add(1).0).for_each(|b| new_data.push(b));
     let mut patch = Vec::<u8>::new();
     B::bsdiff_raw(&old_data, &new_data, &mut patch).unwrap();
-    println!("{}", patch.len());
 
     let mut output = vec![0u8; new_data.len()];
     B::bspatch_raw(&old_data, &mut output, &mut &patch[..]).unwrap();
