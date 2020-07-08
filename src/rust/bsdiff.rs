@@ -209,10 +209,10 @@ fn search(I: &[isize], old: &[u8], new: &[u8], start: usize, end: usize, pos: &m
 struct BsdiffRequest<'a, W: Write> {
     old: &'a [u8],
     new: &'a [u8],
-    write: &'a mut W,
+    write: W,
 }
 
-fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
+fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
     let V: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
     let I: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
 
@@ -226,7 +226,7 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
     let mut pos = 0;
     let mut lastscan = 0;
     let mut lastpos = 0;
-    let mut lastoffset = 0;
+    let mut lastoffset: isize = 0;
     while scan < req.new.len() {
         let mut oldscore = 0;
         scan += len;
@@ -235,7 +235,9 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
             len = search(I, &req.old, &req.new[scan..], 0, req.old.len(), &mut pos) as usize;
 
             while scsc < scan + len {
-                if scsc + lastoffset < req.old.len() && req.old[scsc + lastoffset] == req.new[scsc]
+                println!("scsc: {}, lastoffset: {}", scsc, lastoffset);
+                if scsc as isize + lastoffset < req.old.len() as isize
+                    && req.old[(scsc as isize + lastoffset) as usize] == req.new[scsc]
                 {
                     oldscore += 1
                 }
@@ -245,7 +247,9 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
             if len == oldscore && len != 0 || len > oldscore + 8 {
                 break;
             }
-            if scan + lastoffset < req.old.len() && req.old[scan + lastoffset] == req.new[scan] {
+            if scan as isize + lastoffset < req.old.len() as isize
+                && req.old[(scan as isize + lastoffset) as usize] == req.new[scan]
+            {
                 oldscore -= 1
             }
 
@@ -277,7 +281,7 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
                     if req.old[pos as usize - i] == req.new[scan - i] {
                         s += 1
                     }
-                    if s * 2 - i > Sb * 2 - lenb {
+                    if (s as i64) * 2 - (i as i64) > (Sb as i64) * 2 - (lenb as i64) {
                         Sb = s;
                         lenb = i;
                     }
@@ -315,8 +319,9 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
             req.write.write_i64::<LittleEndian>(lenf as i64)?;
             req.write
                 .write_i64::<LittleEndian>((scan - lenb) as i64 - (lastscan + lenf) as i64)?;
-            req.write
-                .write_i64::<LittleEndian>((pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64))?;
+            req.write.write_i64::<LittleEndian>(
+                (pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64),
+            )?;
 
             // Write Diff Data
             for i in 0..lenf {
@@ -334,7 +339,7 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
             if scan < req.new.len() {
                 lastscan = scan - lenb;
                 lastpos = pos as usize - lenb;
-                lastoffset = pos as usize - scan;
+                lastoffset = pos as isize - scan as isize;
             }
         }
     }
@@ -342,7 +347,7 @@ fn bsdiff_internal<W: Write>(req: BsdiffRequest<W>) -> BsDiffResult {
     Ok(())
 }
 
-pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult {
+pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult {
     let req = BsdiffRequest {
         old,
         new,

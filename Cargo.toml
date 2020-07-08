@@ -6,8 +6,8 @@ edition = "2018"
 build = "build.rs"
 
 [features]
-rust_backend = []
 c_backend = []
+integration_test = []
 
 [dependencies]
 libc = "0.2.0"
@@ -22,6 +22,7 @@ rand = "0.7.0"
 rand_pcg = "0.2.0"
 lazy_static = "1.4.0"
 criterion = "0.3.0"
+tempdir = "0.3.7"
 
 [[bench]]
 name = "backend"

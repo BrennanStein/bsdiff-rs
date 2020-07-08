@@ -8,7 +8,8 @@ use std::os::raw::c_void;
 /// This function does not read a header or any length information.
 /// The output buffer must be the correct size.
 ///
-pub fn bspatch_raw(old: &[u8], new: &mut [u8], patch: &mut dyn Read) -> BsDiffResult {
+pub fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], mut patch: R) -> BsDiffResult {
+    let patch = &mut patch as &mut dyn Read;
     let mut boxed_ptr = Box::from(patch);
     let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Read;
     let mut config = c_bindings::BspatchStream {
