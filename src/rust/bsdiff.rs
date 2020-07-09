@@ -235,7 +235,6 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
             len = search(I, &req.old, &req.new[scan..], 0, req.old.len(), &mut pos) as usize;
 
             while scsc < scan + len {
-                println!("scsc: {}, lastoffset: {}", scsc, lastoffset);
                 if scsc as isize + lastoffset < req.old.len() as isize
                     && req.old[(scsc as isize + lastoffset) as usize] == req.new[scsc]
                 {

@@ -4,3 +4,6 @@
 [submodule "bsdiff-43"]
 	path = bsdiff-43
 	url = https://github.com/mendsley/bsdiff.git
+[submodule "jbsdiff"]
+	path = jbsdiff
+	url = https://github.com/malensek/jbsdiff.git

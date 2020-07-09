@@ -28,7 +28,7 @@ pub type BsDiffResult = std::io::Result<()>;
 
 const MAGIC_NUMBER_BSDIFF_43: &str = "ENDSLEY/BSDIFF43";
 
-pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult {
+pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult {
     patch.write_all(MAGIC_NUMBER_BSDIFF_43.as_bytes()).unwrap();
     patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
     let mut compress = BzEncoder::new(patch, Compression::Best);
@@ -37,7 +37,7 @@ pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], patch: &mut W) -> BsDiffResult
     Ok(())
 }
 
-pub fn bspatch43<W: Write, R: Read>(old: &[u8], new: &mut W, patch: &mut R) -> BsDiffResult {
+pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult {
     let mut header = [0u8; 16];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header, MAGIC_NUMBER_BSDIFF_43.as_bytes());
