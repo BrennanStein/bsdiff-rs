@@ -119,7 +119,6 @@ pub fn jbspatch40<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> Bs
     patch.read_to_end(&mut extra_data).unwrap();
     let extra_stream = BzDecoder::new(&*extra_data);
     let out_len = header_iter.read_u64::<LittleEndian>().unwrap() as usize;
-    let mut out = vec![0u8; out_len].into_boxed_slice();
 
     let streams = JBsDiffStreams {
         ctrl_stream,
@@ -134,7 +133,6 @@ pub fn jbspatch40<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> Bs
         extra_stream: |data, buffer| data.extra_stream.read_exact(buffer),
     };
 
-    bspatch_internal(old, &mut out, req)?;
-    new.write_all(&out)?;
+    bspatch_internal(old, new, out_len, req)?;
     Ok(())
 }

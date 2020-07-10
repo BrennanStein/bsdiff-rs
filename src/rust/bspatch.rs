@@ -1,6 +1,6 @@
 use crate::BsDiffResult;
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::io::Read;
+use std::io::{Read, Write};
 
 pub struct BsPatchRequest<D> {
     pub data: D,
@@ -9,7 +9,12 @@ pub struct BsPatchRequest<D> {
     pub extra_stream: fn(&mut D, &mut [u8]) -> BsDiffResult<()>,
 }
 
-pub fn bspatch_internal<D>(old: &[u8], new: &mut [u8], req: BsPatchRequest<D>) -> BsDiffResult<D> {
+pub fn bspatch_internal<D, W: Write>(
+    old: &[u8],
+    mut new: W,
+    new_len: usize,
+    req: BsPatchRequest<D>,
+) -> BsDiffResult<D> {
     let BsPatchRequest {
         mut data,
         ctrl_stream,
@@ -21,33 +26,38 @@ pub fn bspatch_internal<D>(old: &[u8], new: &mut [u8], req: BsPatchRequest<D>) -
     let mut ctrl_buff = [0u8; 3 * 8];
     let mut ctrl = [0i64; 3];
 
-    while newpos < new.len() {
+    while newpos < new_len {
         ctrl_stream(&mut data, &mut ctrl_buff)?;
         let mut ctrl_buff_stream: &[u8] = &ctrl_buff;
         for i in 0..3 {
             ctrl[i] = ctrl_buff_stream.read_i64::<LittleEndian>()?;
         }
 
-        if newpos + ctrl[0] as usize > new.len() {
+        if newpos + ctrl[0] as usize > new_len {
             return Err(invalid_data!());
         }
 
-        diff_stream(&mut data, &mut new[newpos..(newpos + ctrl[0] as usize)])?;
+        let mut buffer = vec![0u8; ctrl[0] as usize].into_boxed_slice();
+
+        diff_stream(&mut data, &mut buffer)?;
 
         for i in 0..(ctrl[0] as usize) {
             if oldpos + i < old.len() {
-                new[newpos + i] = new[newpos + i].overflowing_add(old[oldpos + i]).0;
+                buffer[i] = buffer[i].overflowing_add(old[oldpos + i]).0;
             }
         }
+
+        new.write_all(&mut buffer);
 
         newpos = (newpos as i64 + ctrl[0]) as usize;
         oldpos = (oldpos as i64 + ctrl[0]) as usize;
 
-        if newpos + ctrl[1] as usize > new.len() {
+        if newpos + ctrl[1] as usize > new_len {
             return Err(invalid_data!());
         }
-
-        extra_stream(&mut data, &mut new[newpos..(newpos + ctrl[1] as usize)])?;
+        let mut buffer = vec![0u8; ctrl[1] as usize];
+        extra_stream(&mut data, &mut buffer)?;
+        new.write_all(&mut buffer);
 
         newpos = (newpos as i64 + ctrl[1]) as usize;
         oldpos = (oldpos as i64 + ctrl[2]) as usize;
@@ -66,6 +76,8 @@ pub fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], patch: R) -> BsDiffResul
         extra_stream: stream_fn,
     };
 
-    bspatch_internal(old, new, req)?;
+    let new_len = new.len();
+
+    bspatch_internal(old, new, new_len, req)?;
     Ok(())
 }
