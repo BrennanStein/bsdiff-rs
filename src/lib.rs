@@ -54,18 +54,34 @@ pub fn bsdiff43_vec(old: &[u8], new: &[u8]) -> BsDiffResult<Vec<u8>> {
 
 const MAGIC_NUMBER_BSDIFF_43: &str = "ENDSLEY/BSDIFF43";
 
-pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult<()> {
+pub fn bspatch43<W: Write, R: Read>(old: &[u8], new: W, mut patch: R) -> BsDiffResult<()> {
     let mut header = [0u8; 16];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header, MAGIC_NUMBER_BSDIFF_43.as_bytes());
-    let new_size = patch.read_u64::<LittleEndian>().unwrap();
-    let mut new_buffer = vec![0u8; new_size as usize];
-    let mut decompress = BzDecoder::new(patch);
-    let exit_code = bspatch_raw(old, &mut new_buffer[..], &mut decompress);
-    if let Ok(()) = exit_code {
+    let new_size = patch.read_u64::<LittleEndian>().unwrap() as usize;
+    let decompress = BzDecoder::new(patch);
+    #[cfg(feature = "c_backend")]
+    {
+        let mut new = new;
+        let mut new_buffer = vec![0u8; new_size];
+        let mut decompress = decompress;
+        bspatch_raw(old, &mut new_buffer[..], &mut decompress)?;
         new.write_all(&mut new_buffer[..]).unwrap();
-    };
-    exit_code
+    }
+    #[cfg(not(feature = "c_backend"))]
+    {
+        // Rust Backend can avoid a copy by using bspatch_internal
+        let write_fun: fn(&mut BzDecoder<_>, &mut [u8]) -> BsDiffResult<()> =
+            |data, buffer| data.read_exact(buffer);
+        let req = BsPatchRequest {
+            data: decompress,
+            ctrl_stream: write_fun,
+            diff_stream: write_fun,
+            extra_stream: write_fun,
+        };
+        backend::bspatch_internal(old, new, new_size, req)?;
+    }
+    Ok(())
 }
 
 pub fn bspatch43_vec<R: Read>(old: &[u8], patch: R) -> BsDiffResult<Vec<u8>> {
