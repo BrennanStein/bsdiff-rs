@@ -24,11 +24,14 @@ pub mod backend;
 
 pub use backend::{bsdiff_raw, bspatch_raw};
 
-pub type BsDiffResult = std::io::Result<()>;
+#[cfg(not(feature = "c_backend"))]
+use backend::{bsdiff_internal, bspatch_internal, BsDiffRequest, BsPatchRequest};
+
+pub type BsDiffResult<D> = std::io::Result<D>;
 
 const MAGIC_NUMBER_BSDIFF_43: &str = "ENDSLEY/BSDIFF43";
 
-pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult {
+pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult<()> {
     patch.write_all(MAGIC_NUMBER_BSDIFF_43.as_bytes()).unwrap();
     patch.write_u64::<LittleEndian>(new.len() as u64).unwrap();
     let mut compress = BzEncoder::new(patch, Compression::Best);
@@ -37,7 +40,7 @@ pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult 
     Ok(())
 }
 
-pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult {
+pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult<()> {
     let mut header = [0u8; 16];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header, MAGIC_NUMBER_BSDIFF_43.as_bytes());
@@ -51,5 +54,87 @@ pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsD
     exit_code
 }
 
-#[allow(dead_code)]
 const MAGIC_NUMBER_BSDIFF_40: &str = "BSDIFF40";
+
+#[cfg(not(feature = "c_backend"))]
+struct JBsDiffStreams<S> {
+    pub ctrl_stream: S,
+    pub diff_stream: S,
+    pub extra_stream: S,
+}
+
+#[cfg(not(feature = "c_backend"))]
+pub fn jbsdiff40<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult<()> {
+    let mut ctrl_data = Vec::new();
+    let mut diff_data = Vec::new();
+    let mut extra_data = Vec::new();
+
+    {
+        let streams = JBsDiffStreams {
+            ctrl_stream: BzEncoder::new(&mut ctrl_data, Compression::Best),
+            diff_stream: BzEncoder::new(&mut diff_data, Compression::Best),
+            extra_stream: BzEncoder::new(&mut extra_data, Compression::Best),
+        };
+
+        let req = BsDiffRequest {
+            data: streams,
+            ctrl_stream: |data, buffer| data.ctrl_stream.write_all(buffer),
+            diff_stream: |data, buffer| data.diff_stream.write_all(buffer),
+            extra_stream: |data, buffer| data.extra_stream.write_all(buffer),
+        };
+
+        bsdiff_internal(old, new, req)?;
+    }
+
+    patch.write_all(MAGIC_NUMBER_BSDIFF_40.as_bytes())?;
+    patch.write_u64::<LittleEndian>(ctrl_data.len() as u64)?;
+    patch.write_u64::<LittleEndian>(diff_data.len() as u64)?;
+    patch.write_u64::<LittleEndian>(new.len() as u64)?;
+
+    patch.write_all(&ctrl_data)?;
+    patch.write_all(&diff_data)?;
+    patch.write_all(&extra_data)?;
+
+    Ok(())
+}
+
+#[cfg(not(feature = "c_backend"))]
+pub fn jbspatch40<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult<()> {
+    let mut header = [0u8; 32];
+    patch.read_exact(&mut header).unwrap();
+    assert_eq!(&header[..8], MAGIC_NUMBER_BSDIFF_40.as_bytes());
+    let mut header_iter = &header[8..];
+
+    let ctrl_len = header_iter.read_u64::<LittleEndian>().unwrap() as usize;
+    let mut ctrl_data = vec![0u8; ctrl_len].into_boxed_slice();
+    patch.read_exact(&mut ctrl_data).unwrap();
+    let ctrl_stream = BzDecoder::new(&*ctrl_data);
+
+    let diff_len = header_iter.read_u64::<LittleEndian>().unwrap() as usize;
+    let mut diff_data = vec![0u8; diff_len].into_boxed_slice();
+    patch.read_exact(&mut diff_data).unwrap();
+    let diff_stream = BzDecoder::new(&*diff_data);
+
+    let mut extra_data = Vec::new();
+    patch.read_to_end(&mut extra_data).unwrap();
+    let extra_stream = BzDecoder::new(&*extra_data);
+    let out_len = header_iter.read_u64::<LittleEndian>().unwrap() as usize;
+    let mut out = vec![0u8; out_len].into_boxed_slice();
+
+    let streams = JBsDiffStreams {
+        ctrl_stream,
+        diff_stream,
+        extra_stream,
+    };
+
+    let req = BsPatchRequest {
+        data: streams,
+        ctrl_stream: |data, buffer| data.ctrl_stream.read_exact(buffer),
+        diff_stream: |data, buffer| data.diff_stream.read_exact(buffer),
+        extra_stream: |data, buffer| data.extra_stream.read_exact(buffer),
+    };
+
+    bspatch_internal(old, &mut out, req)?;
+    new.write_all(&out)?;
+    Ok(())
+}

@@ -206,19 +206,26 @@ fn search(I: &[isize], old: &[u8], new: &[u8], start: usize, end: usize, pos: &m
     }
 }
 
-struct BsdiffRequest<'a, W: Write> {
-    old: &'a [u8],
-    new: &'a [u8],
-    write: W,
+pub struct BsDiffRequest<D> {
+    pub data: D,
+    pub ctrl_stream: fn(&mut D, &[u8]) -> BsDiffResult<()>,
+    pub diff_stream: fn(&mut D, &[u8]) -> BsDiffResult<()>,
+    pub extra_stream: fn(&mut D, &[u8]) -> BsDiffResult<()>,
 }
 
-fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
-    let V: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
-    let I: &mut [isize] = &mut *vec![0isize; req.old.len() + 1];
+pub fn bsdiff_internal<D>(old: &[u8], new: &[u8], req: BsDiffRequest<D>) -> BsDiffResult<D> {
+    let BsDiffRequest {
+        mut data,
+        ctrl_stream,
+        diff_stream,
+        extra_stream,
+    } = req;
+    let V: &mut [isize] = &mut *vec![0isize; old.len() + 1];
+    let I: &mut [isize] = &mut *vec![0isize; old.len() + 1];
 
-    qsufsort(I, V, &req.old);
+    qsufsort(I, V, old);
 
-    let buffer: &mut [u8] = &mut *vec![0u8; req.new.len()];
+    let buffer: &mut [u8] = &mut *vec![0u8; new.len()];
 
     // Compute the differences, writing ctrl as we go
     let mut scan = 0;
@@ -227,16 +234,16 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
     let mut lastscan = 0;
     let mut lastpos = 0;
     let mut lastoffset: isize = 0;
-    while scan < req.new.len() {
+    while scan < new.len() {
         let mut oldscore = 0;
         scan += len;
         let mut scsc = scan;
-        while scan < req.new.len() {
-            len = search(I, &req.old, &req.new[scan..], 0, req.old.len(), &mut pos) as usize;
+        while scan < new.len() {
+            len = search(I, old, &new[scan..], 0, old.len(), &mut pos) as usize;
 
             while scsc < scan + len {
-                if scsc as isize + lastoffset < req.old.len() as isize
-                    && req.old[(scsc as isize + lastoffset) as usize] == req.new[scsc]
+                if scsc as isize + lastoffset < old.len() as isize
+                    && old[(scsc as isize + lastoffset) as usize] == new[scsc]
                 {
                     oldscore += 1
                 }
@@ -246,8 +253,8 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
             if len == oldscore && len != 0 || len > oldscore + 8 {
                 break;
             }
-            if scan as isize + lastoffset < req.old.len() as isize
-                && req.old[(scan as isize + lastoffset) as usize] == req.new[scan]
+            if scan as isize + lastoffset < old.len() as isize
+                && old[(scan as isize + lastoffset) as usize] == new[scan]
             {
                 oldscore -= 1
             }
@@ -255,13 +262,13 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
             scan += 1;
         }
 
-        if len != oldscore || scan == req.new.len() {
+        if len != oldscore || scan == new.len() {
             let mut s = 0;
             let mut Sf = 0;
             let mut lenf = 0;
             let mut i = 0;
-            while lastscan + i < scan && lastpos + i < req.old.len() {
-                if req.old[lastpos + i] == req.new[lastscan + i] {
+            while lastscan + i < scan && lastpos + i < old.len() {
+                if old[lastpos + i] == new[lastscan + i] {
                     s += 1
                 }
                 i += 1;
@@ -272,12 +279,12 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
             }
 
             let mut lenb = 0;
-            if scan < req.new.len() {
+            if scan < new.len() {
                 let mut s = 0;
                 let mut Sb = 0;
                 let mut i = 1;
                 while scan >= lastscan + i && pos as usize >= i {
-                    if req.old[pos as usize - i] == req.new[scan - i] {
+                    if old[pos as usize - i] == new[scan - i] {
                         s += 1
                     }
                     if (s as i64) * 2 - (i as i64) > (Sb as i64) * 2 - (lenb as i64) {
@@ -296,12 +303,10 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
                 let mut lens = 0;
 
                 for i in 0..overlap {
-                    if req.new[lastscan + lenf - overlap + i]
-                        == req.old[lastpos + lenf - overlap + i]
-                    {
+                    if new[lastscan + lenf - overlap + i] == old[lastpos + lenf - overlap + i] {
                         s += 1
                     }
-                    if req.new[scan - lenb + i] == req.old[pos as usize - lenb + i] {
+                    if new[scan - lenb + i] == old[pos as usize - lenb + i] {
                         s -= 1
                     }
                     if s > Ss {
@@ -315,27 +320,29 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
             }
 
             // Write Control Data
-            req.write.write_i64::<LittleEndian>(lenf as i64)?;
-            req.write
+            let mut ctrl_buffer = [0u8; 3 * 8];
+            let mut ctrl_write: &mut [u8] = &mut ctrl_buffer;
+            ctrl_write.write_i64::<LittleEndian>(lenf as i64)?;
+            ctrl_write
                 .write_i64::<LittleEndian>((scan - lenb) as i64 - (lastscan + lenf) as i64)?;
-            req.write.write_i64::<LittleEndian>(
+            ctrl_write.write_i64::<LittleEndian>(
                 (pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64),
             )?;
+            ctrl_stream(&mut data, &ctrl_buffer)?;
 
             // Write Diff Data
             for i in 0..lenf {
-                buffer[i] = req.new[lastscan + i].wrapping_sub(req.old[lastpos + i]);
+                buffer[i] = new[lastscan + i].wrapping_sub(old[lastpos + i]);
             }
-            req.write.write_all(&buffer[..lenf])?;
+            diff_stream(&mut data, &buffer[..lenf])?;
 
             // Write Extra Data
             for i in 0..((scan - lenb) - (lastscan + lenf)) {
-                buffer[i] = req.new[lastscan + lenf + i];
+                buffer[i] = new[lastscan + lenf + i];
             }
-            req.write
-                .write_all(&buffer[..((scan - lenb) - (lastscan + lenf))])?;
+            extra_stream(&mut data, &buffer[..((scan - lenb) - (lastscan + lenf))])?;
 
-            if scan < req.new.len() {
+            if scan < new.len() {
                 lastscan = scan - lenb;
                 lastpos = pos as usize - lenb;
                 lastoffset = pos as isize - scan as isize;
@@ -343,15 +350,19 @@ fn bsdiff_internal<W: Write>(mut req: BsdiffRequest<W>) -> BsDiffResult {
         }
     }
 
-    Ok(())
+    Ok(data)
 }
 
-pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult {
-    let req = BsdiffRequest {
-        old,
-        new,
-        write: patch,
+pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()> {
+    let stream_fn: fn(&mut W, &[u8]) -> BsDiffResult<()> =
+        |patch: &mut W, buffer| patch.write_all(buffer);
+    let req = BsDiffRequest {
+        data: patch,
+        ctrl_stream: stream_fn,
+        diff_stream: stream_fn,
+        extra_stream: stream_fn,
     };
 
-    bsdiff_internal(req)
+    bsdiff_internal(old, new, req)?;
+    Ok(())
 }

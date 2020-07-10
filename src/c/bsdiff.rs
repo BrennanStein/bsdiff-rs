@@ -7,7 +7,7 @@ use std::os::raw::c_void;
 /// Access to the raw bsdiff algorithm.
 /// This function does not add any headers or lenght information to the patch.
 ///
-pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult {
+pub fn bsdiff_raw(old: &[u8], new: &[u8], patch: &mut dyn Write) -> BsDiffResult<()> {
     let mut boxed_ptr = Box::from(patch);
     let raw_ptr = boxed_ptr.as_mut() as *mut &mut dyn Write;
     let mut config = c_bindings::BsdiffStream {
