@@ -16,20 +16,26 @@ use std::io::{Read, Write};
 
 #[path = "c/mod.rs"]
 #[cfg(feature = "c_backend")]
-pub mod backend;
+mod backend;
 
 #[path = "rust/mod.rs"]
 #[cfg(not(feature = "c_backend"))]
-pub mod backend;
+mod backend;
 
-pub use backend::{bsdiff_raw, bspatch_raw};
+#[inline]
+pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()> {
+    backend::bsdiff_raw(old, new, patch)
+}
+
+#[inline]
+pub fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], patch: R) -> BsDiffResult<()> {
+    backend::bspatch_raw(old, new, patch)
+}
 
 #[cfg(not(feature = "c_backend"))]
 use backend::{bsdiff_internal, bspatch_internal, BsDiffRequest, BsPatchRequest};
 
 pub type BsDiffResult<D> = std::io::Result<D>;
-
-const MAGIC_NUMBER_BSDIFF_43: &str = "ENDSLEY/BSDIFF43";
 
 pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult<()> {
     patch.write_all(MAGIC_NUMBER_BSDIFF_43.as_bytes()).unwrap();
@@ -45,6 +51,8 @@ pub fn bsdiff43_vec(old: &[u8], new: &[u8]) -> BsDiffResult<Vec<u8>> {
     bsdiff43(old, new, &mut patch)?;
     Ok(patch)
 }
+
+const MAGIC_NUMBER_BSDIFF_43: &str = "ENDSLEY/BSDIFF43";
 
 pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult<()> {
     let mut header = [0u8; 16];
