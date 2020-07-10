@@ -40,6 +40,12 @@ pub fn bsdiff43<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult<
     Ok(())
 }
 
+pub fn bsdiff43_vec(old: &[u8], new: &[u8]) -> BsDiffResult<Vec<u8>> {
+    let mut patch = Vec::new();
+    bsdiff43(old, new, &mut patch)?;
+    Ok(patch)
+}
+
 pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult<()> {
     let mut header = [0u8; 16];
     patch.read_exact(&mut header).unwrap();
@@ -54,6 +60,13 @@ pub fn bspatch43<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsD
     exit_code
 }
 
+pub fn bspatch43_vec<R: Read>(old: &[u8], patch: R) -> BsDiffResult<Vec<u8>> {
+    let mut new = Vec::new();
+    bspatch43(old, &mut new, patch)?;
+    Ok(new)
+}
+
+#[cfg(not(feature = "c_backend"))]
 const MAGIC_NUMBER_BSDIFF_40: &str = "BSDIFF40";
 
 #[cfg(not(feature = "c_backend"))]
@@ -99,7 +112,14 @@ pub fn jbsdiff40<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult
 }
 
 #[cfg(not(feature = "c_backend"))]
-pub fn jbspatch40<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> BsDiffResult<()> {
+pub fn jbsdiff40_vec(old: &[u8], new: &[u8]) -> BsDiffResult<Vec<u8>> {
+    let mut patch = Vec::new();
+    jbsdiff40(old, new, &mut patch)?;
+    Ok(patch)
+}
+
+#[cfg(not(feature = "c_backend"))]
+pub fn jbspatch40<W: Write, R: Read>(old: &[u8], new: W, mut patch: R) -> BsDiffResult<()> {
     let mut header = [0u8; 32];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header[..8], MAGIC_NUMBER_BSDIFF_40.as_bytes());
@@ -135,4 +155,11 @@ pub fn jbspatch40<W: Write, R: Read>(old: &[u8], mut new: W, mut patch: R) -> Bs
 
     bspatch_internal(old, new, out_len, req)?;
     Ok(())
+}
+
+#[cfg(not(feature = "c_backend"))]
+pub fn jbspatch40_vec<R: Read>(old: &[u8], patch: R) -> BsDiffResult<Vec<u8>> {
+    let mut new = Vec::new();
+    jbspatch40(old, &mut new, patch)?;
+    Ok(new)
 }

@@ -47,7 +47,7 @@ pub fn bspatch_internal<D, W: Write>(
             }
         }
 
-        new.write_all(&mut buffer);
+        new.write_all(&mut buffer)?;
 
         newpos = (newpos as i64 + ctrl[0]) as usize;
         oldpos = (oldpos as i64 + ctrl[0]) as usize;
@@ -57,7 +57,7 @@ pub fn bspatch_internal<D, W: Write>(
         }
         let mut buffer = vec![0u8; ctrl[1] as usize];
         extra_stream(&mut data, &mut buffer)?;
-        new.write_all(&mut buffer);
+        new.write_all(&mut buffer)?;
 
         newpos = (newpos as i64 + ctrl[1]) as usize;
         oldpos = (oldpos as i64 + ctrl[2]) as usize;
