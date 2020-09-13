@@ -4,7 +4,7 @@ use crate::BsDiffResult;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::cmp::{min, Ordering};
 use std::io::Write;
-
+use std::convert::TryFrom;
 fn split(I: &mut [isize], V: &mut [isize], start: isize, len: isize, h: isize) {
     if len < 16 {
         let mut k = start;
@@ -213,7 +213,26 @@ pub struct BsDiffRequest<D> {
     pub extra_stream: fn(&mut D, &[u8]) -> BsDiffResult<()>,
 }
 
-pub fn bsdiff_internal<D>(old: &[u8], new: &[u8], req: BsDiffRequest<D>) -> BsDiffResult<D> {
+
+fn write_control(buffer: &mut Vec<u8>, mut value: i64, x64_bit: bool) -> std::io::Result<()> {
+    if x64_bit {
+        buffer.write_i64::<LittleEndian>(value)?;
+    } else {
+        let neg = value < 0;
+        if value < 0 {
+            value *= -1;
+        }
+        buffer.write_i32::<LittleEndian>(i32::try_from(value).unwrap())?;
+        buffer.write_u8(0)?;
+        buffer.write_u8(0)?;
+        buffer.write_u8(0)?;
+        buffer.write_u8(if neg { 0x80 } else { 0 })?;
+    }
+
+    Ok(())
+}
+
+pub fn bsdiff_internal<D>(old: &[u8], new: &[u8], req: BsDiffRequest<D>, x64: bool) -> BsDiffResult<D> {
     let BsDiffRequest {
         mut data,
         ctrl_stream,
@@ -320,14 +339,14 @@ pub fn bsdiff_internal<D>(old: &[u8], new: &[u8], req: BsDiffRequest<D>) -> BsDi
             }
 
             // Write Control Data
-            let mut ctrl_buffer = [0u8; 3 * 8];
+            let mut ctrl_buffer = Vec::new();//[0u8; 3 * 8];
             let mut ctrl_write: &mut [u8] = &mut ctrl_buffer;
-            ctrl_write.write_i64::<LittleEndian>(lenf as i64)?;
-            ctrl_write
-                .write_i64::<LittleEndian>((scan - lenb) as i64 - (lastscan + lenf) as i64)?;
-            ctrl_write.write_i64::<LittleEndian>(
-                (pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64),
-            )?;
+            write_control(&mut ctrl_buffer, lenf as i64, x64)?;
+            write_control(&mut ctrl_buffer, (scan - lenb) as i64 - (lastscan + lenf) as i64, x64)?;
+            write_control(&mut ctrl_buffer, (pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64), x64)?;
+
+            println!("BUF {:?}", ctrl_buffer);
+
             ctrl_stream(&mut data, &ctrl_buffer)?;
 
             // Write Diff Data
@@ -353,6 +372,21 @@ pub fn bsdiff_internal<D>(old: &[u8], new: &[u8], req: BsDiffRequest<D>) -> BsDi
     Ok(data)
 }
 
+pub fn bsdiff_raw_32bit<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()> {
+    let stream_fn: fn(&mut W, &[u8]) -> BsDiffResult<()> =
+        |patch: &mut W, buffer| patch.write_all(buffer);
+    let req = BsDiffRequest {
+        data: patch,
+        ctrl_stream: stream_fn,
+        diff_stream: stream_fn,
+        extra_stream: stream_fn,
+    };
+
+    bsdiff_internal(old, new, req, false)?;
+    Ok(())
+}
+
+
 pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()> {
     let stream_fn: fn(&mut W, &[u8]) -> BsDiffResult<()> =
         |patch: &mut W, buffer| patch.write_all(buffer);
@@ -363,6 +397,6 @@ pub fn bsdiff_raw<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()
         extra_stream: stream_fn,
     };
 
-    bsdiff_internal(old, new, req)?;
+    bsdiff_internal(old, new, req, true)?;
     Ok(())
 }

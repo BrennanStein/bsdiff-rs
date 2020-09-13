@@ -14,6 +14,7 @@ pub fn bspatch_internal<D, W: Write>(
     mut new: W,
     new_len: usize,
     req: BsPatchRequest<D>,
+    x64: bool,
 ) -> BsDiffResult<D> {
     let BsPatchRequest {
         mut data,
@@ -29,8 +30,15 @@ pub fn bspatch_internal<D, W: Write>(
     while newpos < new_len {
         ctrl_stream(&mut data, &mut ctrl_buff)?;
         let mut ctrl_buff_stream: &[u8] = &ctrl_buff;
-        for i in 0..3 {
-            ctrl[i] = ctrl_buff_stream.read_i64::<LittleEndian>()?;
+        if x64 {
+            for i in 0..3 {
+                ctrl[i] = ctrl_buff_stream.read_i64::<LittleEndian>()?;
+            }
+        } else {
+            for i in 0..3 {
+                ctrl[i] = ctrl_buff_stream.read_i32::<LittleEndian>()? as i64;
+                ctrl_buff_stream.read_i32::<LittleEndian>()?; // zero
+            }
         }
 
         if newpos + ctrl[0] as usize > new_len {
@@ -66,6 +74,23 @@ pub fn bspatch_internal<D, W: Write>(
     Ok(data)
 }
 
+pub fn bspatch_raw_32bit<R: Read>(old: &[u8], new: &mut [u8], patch: R) -> BsDiffResult<()> {
+    let stream_fn: fn(&mut R, &mut [u8]) -> BsDiffResult<()> =
+    |patch, buffer| patch.read_exact(buffer);
+    let req = BsPatchRequest {
+        data: patch,
+        ctrl_stream: stream_fn,
+        diff_stream: stream_fn,
+        extra_stream: stream_fn,
+    };
+
+    let new_len = new.len();
+
+    bspatch_internal(old, new, new_len, req, false)?;
+    Ok(())
+}
+
+
 pub fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], patch: R) -> BsDiffResult<()> {
     let stream_fn: fn(&mut R, &mut [u8]) -> BsDiffResult<()> =
         |patch, buffer| patch.read_exact(buffer);
@@ -78,6 +103,6 @@ pub fn bspatch_raw<R: Read>(old: &[u8], new: &mut [u8], patch: R) -> BsDiffResul
 
     let new_len = new.len();
 
-    bspatch_internal(old, new, new_len, req)?;
+    bspatch_internal(old, new, new_len, req, true)?;
     Ok(())
 }

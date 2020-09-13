@@ -79,7 +79,7 @@ pub fn bspatch43<W: Write, R: Read>(old: &[u8], new: W, mut patch: R) -> BsDiffR
             diff_stream: write_fun,
             extra_stream: write_fun,
         };
-        backend::bspatch_internal(old, new, new_size, req)?;
+        backend::bspatch_internal(old, new, new_size, req, true)?;
     }
     Ok(())
 }
@@ -101,11 +101,20 @@ struct JBsDiffStreams<S> {
 }
 
 #[cfg(not(feature = "c_backend"))]
-pub fn jbsdiff40<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult<()> {
+pub fn jbsdiff40<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()> {
+    jbsdiff40_sized(old, new, patch, true)
+}
+
+#[cfg(not(feature = "c_backend"))]
+pub fn jbsdiff40_32bit<W: Write>(old: &[u8], new: &[u8], patch: W) -> BsDiffResult<()> {
+    jbsdiff40_sized(old, new, patch, false)
+}
+
+#[cfg(not(feature = "c_backend"))]
+fn jbsdiff40_sized<W: Write>(old: &[u8], new: &[u8], mut patch: W, x64_bit: bool) -> BsDiffResult<()> {
     let mut ctrl_data = Vec::new();
     let mut diff_data = Vec::new();
     let mut extra_data = Vec::new();
-
     {
         let streams = JBsDiffStreams {
             ctrl_stream: BzEncoder::new(&mut ctrl_data, Compression::Best),
@@ -120,7 +129,7 @@ pub fn jbsdiff40<W: Write>(old: &[u8], new: &[u8], mut patch: W) -> BsDiffResult
             extra_stream: |data, buffer| data.extra_stream.write_all(buffer),
         };
 
-        bsdiff_internal(old, new, req)?;
+        bsdiff_internal(old, new, req, x64_bit)?;
     }
 
     patch.write_all(MAGIC_NUMBER_BSDIFF_40.as_bytes())?;
@@ -142,8 +151,19 @@ pub fn jbsdiff40_vec(old: &[u8], new: &[u8]) -> BsDiffResult<Vec<u8>> {
     Ok(patch)
 }
 
+
 #[cfg(not(feature = "c_backend"))]
-pub fn jbspatch40<W: Write, R: Read>(old: &[u8], new: W, mut patch: R) -> BsDiffResult<()> {
+pub fn jbspatch40_32bit<W: Write, R: Read>(old: &[u8], new: W, patch: R) -> BsDiffResult<()> {
+    jbspatch40_sized(old, new, patch, false)
+}
+
+#[cfg(not(feature = "c_backend"))]
+pub fn jbspatch40<W: Write, R: Read>(old: &[u8], new: W, patch: R) -> BsDiffResult<()> {
+    jbspatch40_sized(old, new, patch, true)
+}
+
+#[cfg(not(feature = "c_backend"))]
+fn jbspatch40_sized<W: Write, R: Read>(old: &[u8], new: W, mut patch: R, x64_bit: bool) -> BsDiffResult<()> {
     let mut header = [0u8; 32];
     patch.read_exact(&mut header).unwrap();
     assert_eq!(&header[..8], MAGIC_NUMBER_BSDIFF_40.as_bytes());
@@ -177,7 +197,7 @@ pub fn jbspatch40<W: Write, R: Read>(old: &[u8], new: W, mut patch: R) -> BsDiff
         extra_stream: |data, buffer| data.extra_stream.read_exact(buffer),
     };
 
-    bspatch_internal(old, new, out_len, req)?;
+    bspatch_internal(old, new, out_len, req, x64_bit)?;
     Ok(())
 }
 
