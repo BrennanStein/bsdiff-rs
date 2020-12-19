@@ -345,8 +345,6 @@ pub fn bsdiff_internal<D>(old: &[u8], new: &[u8], req: BsDiffRequest<D>, x64: bo
             write_control(&mut ctrl_buffer, (scan - lenb) as i64 - (lastscan + lenf) as i64, x64)?;
             write_control(&mut ctrl_buffer, (pos as i64 - lenb as i64) - (lastpos as i64 + lenf as i64), x64)?;
 
-            println!("BUF {:?}", ctrl_buffer);
-
             ctrl_stream(&mut data, &ctrl_buffer)?;
 
             // Write Diff Data
